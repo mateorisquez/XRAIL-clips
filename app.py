@@ -32,7 +32,14 @@ with st.sidebar:
 
 url_input = st.text_input("URL de YouTube", placeholder="https://www.youtube.com/watch?v=...")
 
-if st.button("🎬 Generar Clips", type="primary"):
+col1, col2 = st.columns([3, 1])
+with col1:
+    clip_count = st.slider("¿Cuántos clips quieres generar?", min_value=1, max_value=10, value=6)
+with col2:
+    st.write("")  # spacer
+    generate_btn = st.button("🎬 Generar Clips", type="primary", use_container_width=True)
+
+if generate_btn:
     if not url_input:
         st.warning("Por favor, ingresa una URL válida de YouTube.")
     elif not os.environ.get("GEMINI_API_KEY"):
@@ -55,7 +62,7 @@ if st.button("🎬 Generar Clips", type="primary"):
                     # To avoid passing huge transcripts that exceed context limits, 
                     # we could split it, but Gemini 1.5/2.5 Flash has a massive 1M+ token window.
                     # We pass the entire transcript directly.
-                    ai_response = analyze_transcript(formatted_transcript)
+                    ai_response = analyze_transcript(formatted_transcript, clip_count=clip_count)
                     clips = ai_response.get("clips", [])
                     status.update(label="Análisis completado", state="complete")
                 

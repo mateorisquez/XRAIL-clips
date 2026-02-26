@@ -14,7 +14,7 @@ class ClipSuggestion(BaseModel):
 class ClipSuggestionsResponse(BaseModel):
     clips: list[ClipSuggestion]
 
-def analyze_transcript(transcript_text: str) -> dict:
+def analyze_transcript(transcript_text: str, clip_count: int = 6) -> dict:
     """
     Analyzes the transcript using Gemini to find raw clip suggestions.
     """
@@ -22,12 +22,13 @@ def analyze_transcript(transcript_text: str) -> dict:
     if not api_key or api_key == "your_gemini_api_key_here":
         raise ValueError("Please provide a valid GEMINI_API_KEY in the .env file")
 
+    clip_count = min(max(int(clip_count), 1), 10)
     client = genai.Client(api_key=api_key)
     
     prompt = f"""
     Eres un experto productor de podcasts, administrador de redes sociales y creador de contenido viral.
     Tu trabajo es analizar la siguiente transcripción de un podcast (que incluye marcas de tiempo) y seleccionar 
-    los 6 MEJORES momentos para convertirlos en clips cortos (Shorts/Reels/TikToks).
+    los {clip_count} MEJORES momentos para convertirlos en clips cortos (Shorts/Reels/TikToks).
     
     Reglas estrictas:
     1. CADA CLIP DEBE DURAR MENOS DE 60 SEGUNDOS. Mide cuidadosamente las marcas de tiempo.
