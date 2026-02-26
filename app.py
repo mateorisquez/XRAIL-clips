@@ -27,47 +27,71 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Instrucciones")
     st.markdown("1. Ingresa la URL de YouTube")
-    st.markdown("2. Asegúrate de tener configurada tu API Key de Gemini (puedes ponerla en el archivo `.env`)")
-    st.markdown("3. Selecciona 'Generar Clips'")
+    st.markdown("2. Asegúrate de tener configurada tu API Key de Gemini")
+    st.markdown("3. Selecciona cuántos clips quieres")
+    st.markdown("4. Click en **Generar Clips**")
 
-url_input = st.text_input("URL de YouTube", placeholder="https://www.youtube.com/watch?v=...")
+url_input = st.text_input("URL de YouTube", placeholder="https://www.youtube.com/watch?v=... o pega el ID del video")
 
 col1, col2 = st.columns([3, 1])
 with col1:
     clip_count = st.slider("¿Cuántos clips quieres generar?", min_value=1, max_value=10, value=6)
 with col2:
     st.write("")  # spacer
-    generate_btn = st.button("🎬 Generar Clips", type="primary", use_container_width=True)
 
-if generate_btn:
-    if not url_input:
-        st.warning("Por favor, ingresa una URL válida de YouTube.")
+# Manual transcript option (for cloud deployments where YouTube blocks IPs)
+with st.expander("📋 ¿Error de IP bloqueada? Pega la transcripción aquí", expanded=False):
+    st.markdown("""
+    Si YouTube bloquea la descarga automática (común en servidores cloud), puedes pegar la transcripción manualmente:
+    
+    **Cómo obtener la transcripción de YouTube:**
+    1. Abre el video en YouTube
+    2. Haz click en **⋯** (los tres puntos debajo del video)
+    3. Selecciona **"Mostrar transcripción"**
+    4. Copia todo el texto y pégalo aquí abajo
+    """)
+    manual_transcript = st.text_area(
+        "Transcripción (pegar aquí)",
+        height=200,
+        placeholder="[00:00] Bienvenidos al podcast...\n[00:05] Hoy vamos a hablar de..."
+    )
+
+if st.button("🎬 Generar Clips", type="primary", use_container_width=True):
+    if not url_input and not manual_transcript:
+        st.warning("Por favor, ingresa una URL válida de YouTube o pega una transcripción.")
     elif not os.environ.get("GEMINI_API_KEY"):
         st.error("Por favor, configura tu API Key de Gemini en la barra lateral.")
     else:
         with st.spinner("Analizando el video... esto puede tomar unos segundos."):
             try:
-                # 1. Extract Video ID
-                video_id = extract_video_id(url_input)
-                st.info(f"✅ Video ID detectado: `{video_id}` (longitud: {len(video_id)})")
+                video_id = extract_video_id(url_input) if url_input else ""
                 
-                # 2. Extract Transcript
-                with st.status("Descargando transcripción...", expanded=True) as status:
-                    raw_transcript = get_transcript_with_timestamps(video_id)
-                    formatted_transcript = format_transcript_for_llm(raw_transcript)
-                    status.update(label=f"✅ Transcripción descargada ({len(formatted_transcript.splitlines())} líneas encontradas)", state="complete")
+                # Determine transcript source
+                if manual_transcript and manual_transcript.strip():
+                    # Use manually pasted transcript
+                    formatted_transcript = manual_transcript.strip()
+                    st.info(f"📋 Usando transcripción pegada ({len(formatted_transcript.splitlines())} líneas)")
+                else:
+                    # Auto-fetch transcript
+                    if not video_id:
+                        st.warning("Ingresa una URL de YouTube o pega la transcripción manualmente.")
+                        st.stop()
                     
-                # 3. Request Clips from Gemini
+                    st.info(f"✅ Video ID detectado: `{video_id}`")
+                    
+                    with st.status("Descargando transcripción...", expanded=True) as status:
+                        raw_transcript = get_transcript_with_timestamps(video_id)
+                        formatted_transcript = format_transcript_for_llm(raw_transcript)
+                        status.update(label=f"✅ Transcripción descargada ({len(formatted_transcript.splitlines())} líneas)", state="complete")
+                    
+                # Analyze with Gemini
                 with st.status("Buscando los mejores momentos con IA...", expanded=False) as status:
-                    # To avoid passing huge transcripts that exceed context limits, 
-                    # we could split it, but Gemini 1.5/2.5 Flash has a massive 1M+ token window.
-                    # We pass the entire transcript directly.
                     ai_response = analyze_transcript(formatted_transcript, clip_count=clip_count)
                     clips = ai_response.get("clips", [])
                     status.update(label="Análisis completado", state="complete")
                 
-                # 4. Display Clips
-                st.success("¡Clips generados con éxito!")
+                # Display Clips
+                st.success(f"¡{len(clips)} clips generados con éxito!")
                 
                 for i, clip in enumerate(clips):
                     with st.expander(f"📌 Clip #{i+1} : {clip.get('start_time')} - {clip.get('end_time')}", expanded=True):
@@ -75,14 +99,13 @@ if generate_btn:
                         st.markdown(f"**Copy para Reels/Shorts:**\n\n```text\n{clip.get('copy')}\n```")
                         st.markdown(f"**¿Por qué este clip?** {clip.get('reasoning')}")
                         
-                        # Add a convenient link to jump directly to the timestamp
-                        # Calculate seconds from MM:SS for the youtube link
-                        try:
-                            time_parts = clip.get('start_time').split(':')
-                            seconds = int(time_parts[0]) * 60 + int(time_parts[1])
-                            st.markdown(f"[▶️ Ver este momento en YouTube](https://youtu.be/{video_id}?t={seconds})")
-                        except Exception:
-                            pass
+                        if video_id:
+                            try:
+                                time_parts = clip.get('start_time').split(':')
+                                seconds = int(time_parts[0]) * 60 + int(time_parts[1])
+                                st.markdown(f"[▶️ Ver este momento en YouTube](https://youtu.be/{video_id}?t={seconds})")
+                            except Exception:
+                                pass
                             
             except Exception as e:
                 st.error(f"Ocurrió un error: {str(e)}")
